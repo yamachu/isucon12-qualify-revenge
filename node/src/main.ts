@@ -436,6 +436,12 @@ async function flockByTenantID(tenantId: number): Promise<() => Promise<void>> {
   return close
 }
 
+export type TenantCompetitionId<
+  TenantId extends number = any,
+  CompetitionId extends number = any
+> = `${TenantId}-${CompetitionId}`
+const billingReportCache: Map<TenantCompetitionId, BillingReport> = new Map()
+
 // SaaS管理者向けAPI
 // テナントを追加する
 // POST /api/admin/tenants/add
@@ -536,6 +542,11 @@ async function billingReportByCompetition(
     }
   }
 
+  const cached = billingReportCache.get(`${tenantId}-${competitionId}`)
+  if (cached !== undefined) {
+    return cached
+  }
+
   // ランキングにアクセスした参加者のIDを取得する
   const [vhs] = await adminDB.query<(VisitHistorySummaryRow & RowDataPacket)[]>(
     'SELECT player_id, created_at AS min_created_at FROM min_visit_history WHERE tenant_id = ? AND competition_id = ?',
@@ -583,7 +594,7 @@ async function billingReportByCompetition(
       }
     }
 
-    return {
+    const result = {
       competition_id: comp.id,
       competition_title: comp.title,
       player_count: counts.player,
@@ -592,6 +603,10 @@ async function billingReportByCompetition(
       billing_visitor_yen: 10 * counts.visitor,
       billing_yen: 100 * counts.player + 10 * counts.visitor,
     }
+
+    billingReportCache.set(`${tenantId}-${competitionId}`, result)
+
+    return result
   } catch (error) {
     throw new Error(`error Select count player_score: tenantId=${tenantId}, competitionId=${comp.id}, ${error}`)
   } finally {
@@ -958,6 +973,9 @@ app.post(
       res.status(200).json({
         status: true,
       })
+
+      // don't await
+      billingReportByCompetition(tenantDB, viewer.tenantId, competitionId)
     } catch (error: any) {
       if (error.status) {
         throw error // rethrow
