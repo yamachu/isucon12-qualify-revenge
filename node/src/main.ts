@@ -1631,11 +1631,11 @@ app.post(
         const competitionRow = await tenantDB.all<CompetitionRow[]>(
           'SELECT * FROM competition WHERE finished_at NOT NULL'
         )
+        await migrateSQLite3DBImpl(tenantDB)
         for (const competition of competitionRow) {
           // Add cache
           await billingReportByCompetition(tenantDB, tenantId, competition.id, false)
         }
-        await migrateSQLite3DBImpl(tenantDB)
 
         tenantDB.close()
       }
