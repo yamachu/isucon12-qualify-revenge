@@ -99,6 +99,26 @@ duration_index = 10
 #regexp = '^(GET|HEAD) /images/'
 #name = 'GET /images/*'
 
+[[bundle]]
+regexp = 'POST /api/organizer/player/[0-9a-zA-Z]+/disqualified'
+name = 'POST /api/organizer/player/:player_id/disqualified'
+
+[[bundle]]
+regexp = 'POST /api/organizer/competition/[0-9a-zA-Z]+/finish'
+name = 'POST /api/organizer/competition/:competition_id/finish'
+
+[[bundle]]
+regexp = 'POST /api/organizer/competition/[0-9a-zA-Z]+/score'
+name = 'POST /api/organizer/competition/:competitionId/score'
+
+[[bundle]]
+regexp = 'GET /api/player/player/[0-9a-zA-Z]+'
+name = 'GET /api/player/player/:playerId'
+
+[[bundle]]
+regexp = 'GET /api/player/competition/[0-9a-zA-Z]+/ranking'
+name = 'GET /api/player/competition/:competitionId/ranking'
+
 ################################################################################
 # Replace
 ################################################################################
