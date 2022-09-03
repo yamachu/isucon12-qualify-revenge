@@ -1089,21 +1089,23 @@ app.post(
             competitionId
           )
 
-          for (const row of playerScoreRows) {
-            await tenantDB.run(
-              'INSERT INTO player_score (id, tenant_id, player_id, competition_id, score, row_num, created_at, updated_at) VALUES ($id, $tenant_id, $player_id, $competition_id, $score, $row_num, $created_at, $updated_at)',
-              {
-                $id: row.id,
-                $tenant_id: row.tenant_id,
-                $player_id: row.player_id,
-                $competition_id: row.competition_id,
-                $score: row.score,
-                $row_num: row.row_num,
-                $created_at: row.created_at,
-                $updated_at: row.updated_at,
-              }
-            )
-          }
+          await tenantDB.run(
+            `INSERT INTO player_score (id, tenant_id, player_id, competition_id, score, row_num, created_at, updated_at) VALUES ${[
+              ...Array(playerScoreRows.length),
+            ]
+              .map((_) => '(?, ?, ?, ?, ?, ?, ?, ?)')
+              .join(' ,')}`,
+            playerScoreRows.flatMap((row) => [
+              row.id,
+              row.tenant_id,
+              row.player_id,
+              row.competition_id,
+              row.score,
+              row.row_num,
+              row.created_at,
+              row.updated_at,
+            ])
+          )
         } finally {
           unlock()
         }
