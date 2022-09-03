@@ -12,6 +12,9 @@ log_rotate/mysql:
 show-slowquery/mysql:
 	mysqldumpslow $(ls -d ~/log/mysql/*|tail -n1)
 
+restart/mysql:
+	sudo systemctl restart mysql
+
 restart/docker:
 	sudo systemctl daemon-reload
 	sudo systemctl restart isuports.service
