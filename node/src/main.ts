@@ -1045,13 +1045,13 @@ app.post(
         let rowNum = 0
         try {
           const players = new Set(records.map((v) => v.player_id))
-          const playerCount = await tenantDB.get(
-            `select count(1) from player where id in (${[...players].map((_) => '?').join(', ')})`,
+          const maybeCnt = await tenantDB.get<{ cnt: number }>(
+            `select count(1) as cnt from player where id in (${[...players].map((_) => '?').join(', ')})`,
             ...players.keys()
           )
-          if (playerCount !== players.size) {
+          if (maybeCnt?.cnt !== players.size) {
             // 存在しない参加者が含まれている
-            throw new ErrorWithStatus(400, `player not found: count ${playerCount} ? ${players.size}`)
+            throw new ErrorWithStatus(400, `player not found: count ${maybeCnt?.cnt} ? ${players.size}`)
           }
 
           for (const record of records) {
