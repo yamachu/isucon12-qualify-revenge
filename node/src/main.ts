@@ -525,7 +525,7 @@ async function billingReportByCompetition(
 
   // ランキングにアクセスした参加者のIDを取得する
   const [vhs] = await adminDB.query<(VisitHistorySummaryRow & RowDataPacket)[]>(
-    'SELECT player_id, MIN(created_at) AS min_created_at FROM visit_history WHERE tenant_id = ? AND competition_id = ? GROUP BY player_id',
+    'SELECT player_id, created_at AS min_created_at FROM min_visit_history WHERE tenant_id = ? AND competition_id = ?',
     [tenantId, comp.id]
   )
 
@@ -1332,8 +1332,8 @@ app.get(
         ])
 
         await adminDB.execute<OkPacket>(
-          'INSERT INTO visit_history (player_id, tenant_id, competition_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
-          [viewer.playerId, tenant.id, competitionId, now, now]
+          'INSERT IGNORE INTO min_visit_history (player_id, tenant_id, competition_id, created_at) VALUES (?, ?, ?, ?)',
+          [viewer.playerId, tenant.id, competitionId, now]
         )
 
         const { rank_after: rankAfterStr } = req.query
