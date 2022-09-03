@@ -576,7 +576,7 @@ async function billingReportByCompetition(
   try {
     // スコアを登録した参加者のIDを取得する
     const scoredPlayerIds = await tenantDB.all<{ player_id: string }[]>(
-      'SELECT DISTINCT(player_id) FROM player_score WHERE tenant_id = ? AND competition_id = ?',
+      'SELECT DISTINCT(player_id) FROM latest_player_score WHERE tenant_id = ? AND competition_id = ?',
       tenantId,
       comp.id
     )
@@ -1113,27 +1113,18 @@ app.post(
 
           await tenantDB.run('begin TRANSACTION')
           await tenantDB.run(
-            'DELETE FROM player_score WHERE tenant_id = ? AND competition_id = ?',
+            'DELETE FROM latest_player_score WHERE tenant_id = ? AND competition_id = ?',
             viewer.tenantId,
             competitionId
           )
 
           await tenantDB.run(
-            `INSERT INTO player_score (id, tenant_id, player_id, competition_id, score, row_num, created_at, updated_at) VALUES ${[
+            `INSERT INTO latest_player_score (tenant_id, player_id, competition_id, score, row_num) VALUES ${[
               ...Array(playerScoreRows.length),
             ]
-              .map((_) => '(?, ?, ?, ?, ?, ?, ?, ?)')
+              .map((_) => '(?, ?, ?, ?, ?)')
               .join(' ,')}`,
-            playerScoreRows.flatMap((row) => [
-              row.id,
-              row.tenant_id,
-              row.player_id,
-              row.competition_id,
-              row.score,
-              row.row_num,
-              row.created_at,
-              row.updated_at,
-            ])
+            playerScoreRows.flatMap((row) => [row.tenant_id, row.player_id, row.competition_id, row.score, row.row_num])
           )
           await tenantDB.run('commit')
         } finally {
@@ -1300,42 +1291,53 @@ app.get(
           is_disqualified: !!p.is_disqualified,
         }
 
-        const competitions = await tenantDB.all<CompetitionRow[]>(
-          'SELECT * FROM competition WHERE tenant_id = ? ORDER BY created_at ASC',
-          viewer.tenantId
-        )
+        // const competitions = await tenantDB.all<CompetitionRow[]>(
+        //   'SELECT * FROM competition WHERE tenant_id = ? ORDER BY created_at ASC',
+        //   viewer.tenantId
+        // )
 
-        const pss: PlayerScoreRow[] = []
+        // const pss: PlayerScoreRow[] = []
 
         // player_scoreを読んでいるときに更新が走ると不整合が起こるのでロックを取得する
         const unlock = await flockByTenantID(viewer.tenantId)
         try {
-          for (const comp of competitions) {
-            const ps = await tenantDB.get<PlayerScoreRow>(
-              // 最後にCSVに登場したスコアを採用する = row_numが一番大きいもの
-              'SELECT * FROM player_score WHERE tenant_id = ? AND competition_id = ? AND player_id = ? ORDER BY row_num DESC LIMIT 1',
-              viewer.tenantId,
-              comp.id,
-              p.id
-            )
-            if (!ps) {
-              // 行がない = スコアが記録されてない
-              continue
-            }
+          const scores = await tenantDB.all<{ title: string; score: number }[]>(
+            'select ct.title as title, lps.score as score from competition ct join latest_player_score lps on lps.competition_id = ct.id where tenant_id = ? order by created_at ASC',
+            viewer.tenantId
+          )
+          // for (const comp of competitions) {
+          //   const ps = await tenantDB.get<PlayerScoreRow>(
+          //     // 最後にCSVに登場したスコアを採用する = row_numが一番大きいもの
+          //     // FIXME
+          //     'SELECT * FROM latest_player_score WHERE tenant_id = ? AND competition_id = ? AND player_id = ? ORDER BY row_num DESC LIMIT 1',
+          //     viewer.tenantId,
+          //     comp.id,
+          //     p.id
+          //   )
+          //   if (!ps) {
+          //     // 行がない = スコアが記録されてない
+          //     continue
+          //   }
 
-            pss.push(ps)
-          }
+          //   pss.push(ps)
+          // }
 
-          for (const ps of pss) {
-            const comp = await retrieveCompetition(tenantDB, ps.competition_id)
-            if (!comp) {
-              throw new Error('error retrieveCompetition')
-            }
-            psds.push({
-              competition_title: comp?.title,
-              score: ps.score,
-            })
-          }
+          // for (const ps of pss) {
+          //   const comp = await retrieveCompetition(tenantDB, ps.competition_id)
+          //   if (!comp) {
+          //     throw new Error('error retrieveCompetition')
+          //   }
+          //   psds.push({
+          //     competition_title: comp?.title,
+          //     score: ps.score,
+          //   })
+          // }
+          psds.push(
+            ...scores.map((v) => ({
+              competition_title: v.title,
+              score: v.score,
+            }))
+          )
         } finally {
           unlock()
         }
@@ -1418,7 +1420,7 @@ app.get(
           const pss = await tenantDB.all<
             { score: number; player_id: string; display_name: string | null; row_num: number }[]
           >(
-            'SELECT ps.score as score, ps.player_id as player_id, p.display_name as display_name, ps.row_num as row_num FROM player_score ps left join player p on p.id = ps.player_id WHERE ps.tenant_id = ? AND ps.competition_id = ? ORDER BY ps.row_num DESC',
+            'SELECT ps.score as score, ps.player_id as player_id, p.display_name as display_name, ps.row_num as row_num FROM latest_player_score ps left join player p on p.id = ps.player_id WHERE ps.tenant_id = ? AND ps.competition_id = ? ORDER BY ps.row_num DESC',
             tenant.id,
             competition.id
           )
@@ -1591,6 +1593,28 @@ app.get(
   })
 )
 
+async function migrateSQLite3DBImpl(tenantDB: Database) {
+  await tenantDB.exec(`create index tenant_id_idx_on_competition on competition(tenant_id);`)
+  await tenantDB.exec(`create index finished_at_idx_on_competition on competition(finished_at);`)
+  await tenantDB.exec(`create index tenant_id_created_at_idx_on_competition on competition(tenant_id, created_at);`)
+
+  await tenantDB.exec(`create index tenant_id_created_at_idx_on_player on player(tenant_id, created_at);`)
+
+  await tenantDB.exec(`
+    create table latest_player_score(
+      tenant_id BIGINT NOT NULL,
+      player_id VARCHAR(255) NOT NULL,
+      competition_id VARCHAR(255) NOT NULL,
+      score BIGINT NOT NULL,
+      row_num BIGINT NOT NULL,
+      unique(player_id, tenant_id, competition_id)
+    );`)
+
+  await tenantDB.exec(`replace into latest_player_score(tenant_id, player_id,competition_id, score,row_num)
+     select tenant_id, player_id,competition_id, score,row_num from player_score order by row_num asc;
+     `)
+}
+
 // ベンチマーカー向けAPI
 // POST /initialize
 // ベンチマーカーが起動したときに最初に呼ぶ
@@ -1611,6 +1635,8 @@ app.post(
           // Add cache
           await billingReportByCompetition(tenantDB, tenantId, competition.id, false)
         }
+        await migrateSQLite3DBImpl(tenantDB)
+
         tenantDB.close()
       }
 
