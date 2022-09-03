@@ -1044,6 +1044,16 @@ app.post(
         const unlock = await flockByTenantID(viewer.tenantId)
         let rowNum = 0
         try {
+          const players = new Set(records.map((v) => v.player_id))
+          const playerCount = await tenantDB.get(
+            'select count(1) from player where id in (?)',
+            [...players.keys()].join(', ')
+          )
+          if (playerCount !== players.size) {
+            // 存在しない参加者が含まれている
+            throw new ErrorWithStatus(400, `player not found`)
+          }
+
           for (const record of records) {
             rowNum++
             const keys = Object.keys(record)
@@ -1052,11 +1062,6 @@ app.post(
             }
 
             const { player_id, score: scoreStr } = record
-            const p = await retrievePlayer(tenantDB, player_id)
-            if (!p) {
-              // 存在しない参加者が含まれている
-              throw new ErrorWithStatus(400, `player not found: ${player_id}`)
-            }
 
             const score = parseInt(scoreStr, 10)
             if (isNaN(score)) {
@@ -1084,21 +1089,23 @@ app.post(
             competitionId
           )
 
-          for (const row of playerScoreRows) {
-            await tenantDB.run(
-              'INSERT INTO player_score (id, tenant_id, player_id, competition_id, score, row_num, created_at, updated_at) VALUES ($id, $tenant_id, $player_id, $competition_id, $score, $row_num, $created_at, $updated_at)',
-              {
-                $id: row.id,
-                $tenant_id: row.tenant_id,
-                $player_id: row.player_id,
-                $competition_id: row.competition_id,
-                $score: row.score,
-                $row_num: row.row_num,
-                $created_at: row.created_at,
-                $updated_at: row.updated_at,
-              }
-            )
-          }
+          await tenantDB.run(
+            `INSERT INTO player_score (id, tenant_id, player_id, competition_id, score, row_num, created_at, updated_at) VALUES ${[
+              ...Array(playerScoreRows.length),
+            ]
+              .map((_) => '(?, ?, ?, ?, ?, ?, ?, ?)')
+              .join(' ,')}`,
+            playerScoreRows.map((row) => [
+              row.id,
+              row.tenant_id,
+              row.player_id,
+              row.competition_id,
+              row.score,
+              row.row_num,
+              row.created_at,
+              row.updated_at,
+            ])
+          )
         } finally {
           unlock()
         }
