@@ -1126,20 +1126,23 @@ app.post(
             new Map<string, PlayerScoreRow>()
           )
 
-          await tenantDB.run(
-            `INSERT INTO latest_player_score (tenant_id, player_id, competition_id, score, row_num) VALUES ${[
-              ...Array(willInsert.size),
-            ]
-              .map((_) => '(?, ?, ?, ?, ?)')
-              .join(' ,')}`,
-            [...willInsert.entries()].flatMap(([_, row]) => [
-              row.tenant_id,
-              row.player_id,
-              row.competition_id,
-              row.score,
-              row.row_num,
-            ])
-          )
+          if (willInsert.size !== 0) {
+            await tenantDB.run(
+              `INSERT INTO latest_player_score (tenant_id, player_id, competition_id, score, row_num) VALUES ${[
+                ...Array(willInsert.size),
+              ]
+                .map((_) => '(?, ?, ?, ?, ?)')
+                .join(' ,')}`,
+              [...willInsert.entries()].flatMap(([_, row]) => [
+                row.tenant_id,
+                row.player_id,
+                row.competition_id,
+                row.score,
+                row.row_num,
+              ])
+            )
+          }
+
           await tenantDB.run('commit')
         } finally {
           // unlock()
