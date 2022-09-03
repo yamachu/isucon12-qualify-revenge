@@ -14,6 +14,7 @@ show-slowquery/mysql:
 
 restart/mysql:
 	sudo systemctl restart mysql
+	/home/isucon/webapp/sql/prepare.sh
 
 restart/docker:
 	sudo systemctl daemon-reload
