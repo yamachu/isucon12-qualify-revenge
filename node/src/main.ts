@@ -1046,12 +1046,12 @@ app.post(
         try {
           const players = new Set(records.map((v) => v.player_id))
           const playerCount = await tenantDB.get(
-            `select count(1) from player where id in (${[...Array(players.size)].map((_) => '?').join(', ')})`,
+            `select count(1) from player where id in (${[...players].map((_) => '?').join(', ')})`,
             ...players.keys()
           )
           if (playerCount !== players.size) {
             // 存在しない参加者が含まれている
-            throw new ErrorWithStatus(400, `player not found`)
+            throw new ErrorWithStatus(400, `player not found: count ${playerCount} ? ${players.size}`)
           }
 
           for (const record of records) {
