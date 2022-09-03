@@ -523,6 +523,19 @@ async function billingReportByCompetition(
     throw Error('error retrieveCompetition on billingReportByCompetition')
   }
 
+  // 大会が終了していないので全て0で確定する
+  if (comp.finished_at === null) {
+    return {
+      competition_id: comp.id,
+      competition_title: comp.title,
+      player_count: 0,
+      visitor_count: 0,
+      billing_player_yen: 0,
+      billing_visitor_yen: 0,
+      billing_yen: 0,
+    }
+  }
+
   // ランキングにアクセスした参加者のIDを取得する
   const [vhs] = await adminDB.query<(VisitHistorySummaryRow & RowDataPacket)[]>(
     'SELECT player_id, created_at AS min_created_at FROM min_visit_history WHERE tenant_id = ? AND competition_id = ?',
