@@ -1047,7 +1047,7 @@ app.post(
           const players = new Set(records.map((v) => v.player_id))
           const playerCount = await tenantDB.get(
             `select count(1) from player where id in (${[...Array(players.size)].map((_) => '?').join(', ')})`,
-            [...players.keys()]
+            ...players.keys()
           )
           if (playerCount !== players.size) {
             // 存在しない参加者が含まれている
