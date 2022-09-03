@@ -1095,7 +1095,7 @@ app.post(
             ]
               .map((_) => '(?, ?, ?, ?, ?, ?, ?, ?)')
               .join(' ,')}`,
-            playerScoreRows.map((row) => [
+            playerScoreRows.flatMap((row) => [
               row.id,
               row.tenant_id,
               row.player_id,
