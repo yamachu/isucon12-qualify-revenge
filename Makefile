@@ -17,7 +17,7 @@ show-slowquery/mysql:
 	mysqldumpslow `ls -d ~/log/mysql/*|tail -n1`
 
 show-kataribe:
-	cat `ls -d ~/log/nginx|tail -n1` | ../tools/kataribe -f kataribe.toml
+	cat `ls -d ~/log/nginx/*|tail -n1` | ../tools/kataribe -f kataribe.toml
 
 restart/mysql:
 	sudo systemctl restart mysql
