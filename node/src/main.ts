@@ -975,7 +975,9 @@ app.post(
       })
 
       // don't await
-      billingReportByCompetition(tenantDB, viewer.tenantId, competitionId)
+      billingReportByCompetition(tenantDB, viewer.tenantId, competitionId).catch((e) => {
+        console.error(`cache failed... => ${e}`)
+      })
     } catch (error: any) {
       if (error.status) {
         throw error // rethrow
