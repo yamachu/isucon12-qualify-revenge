@@ -482,6 +482,9 @@ app.post(
       if (error) {
         throw new Error(`error createTenantDB: id=${id} name=${name}, ${error}`)
       }
+      const tenantDB = await connectToTenantDB(id)
+      await migrateSQLite3DBImpl(tenantDB)
+      await tenantDB.close()
 
       const data: TenantsAddResult = {
         tenant: {
