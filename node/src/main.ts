@@ -1488,7 +1488,7 @@ app.get(
         // const unlock = await flockByTenantID(tenant.id)
         try {
           const tmpRanks = await aggregateRankingByTenantDB(tenantDB, tenant.id, competition.id)
-          ranks.push(...tmpRanks.filter((v) => v.rank >= (rankAfter ?? 0) && v.rank < (rankAfter ?? 0) + 100))
+          ranks.push(...tmpRanks.filter((v) => v.rank > (rankAfter ?? 0) && v.rank <= (rankAfter ?? 0) + 100))
         } finally {
           // unlock()
         }
