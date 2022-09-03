@@ -789,36 +789,36 @@ app.post(
       try {
         const displayNames: string[] = req.body['display_name[]']
 
-        for (const displayName of displayNames) {
-          const id = await dispenseID()
-          const now = Math.floor(new Date().getTime() / 1000)
-
-          try {
-            await tenantDB.run(
-              'INSERT INTO player (id, tenant_id, display_name, is_disqualified, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
-              id,
-              viewer.tenantId,
+        const pdsMaster = await Promise.all(
+          displayNames.map((displayName) => {
+            return dispenseID().then((v) => ({
+              id: v,
               displayName,
-              false,
-              now,
-              now
-            )
-          } catch (error) {
-            throw new Error(
-              `error Insert player at tenantDB: tenantId=${viewer.tenantId} id=${id}, displayName=${displayName}, isDisqualified=false, createdAt=${now}, updatedAt=${now}, ${error}`
-            )
-          }
-
-          const player = await retrievePlayer(tenantDB, id)
-          if (!player) {
-            throw new Error('error retrievePlayer id=${id}')
-          }
-          pds.push({
-            id: player.id,
-            display_name: player.display_name,
-            is_disqualified: !!player.is_disqualified,
+            }))
           })
-        }
+        )
+          .then(async (v) => {
+            const now = Math.floor(new Date().getTime() / 1000)
+
+            await tenantDB.run(
+              `INSERT INTO player (id, tenant_id, display_name, is_disqualified, created_at, updated_at) VALUES ${[
+                ...Array(v.length),
+              ]
+                .map((_) => '(?,?,?,?,?,?)')
+                .join(',')}`,
+              v.flatMap((vv) => [vv.id, viewer.tenantId, vv.displayName, false, now, now])
+            )
+            return v
+          })
+          .then((v) =>
+            v.map((vv) => ({
+              id: vv.id,
+              display_name: vv.displayName,
+              is_disqualified: false,
+            }))
+          )
+
+        pds.push(...pdsMaster)
       } finally {
         tenantDB.close()
       }
