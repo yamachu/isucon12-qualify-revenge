@@ -1121,13 +1121,24 @@ app.post(
             competitionId
           )
 
+          const willInsert = playerScoreRows.reduce(
+            (prev, curr) => prev.set(curr.player_id, curr),
+            new Map<string, PlayerScoreRow>()
+          )
+
           await tenantDB.run(
             `INSERT INTO latest_player_score (tenant_id, player_id, competition_id, score, row_num) VALUES ${[
-              ...Array(playerScoreRows.length),
+              ...Array(willInsert.size),
             ]
               .map((_) => '(?, ?, ?, ?, ?)')
               .join(' ,')}`,
-            playerScoreRows.flatMap((row) => [row.tenant_id, row.player_id, row.competition_id, row.score, row.row_num])
+            [...willInsert.entries()].flatMap(([_, row]) => [
+              row.tenant_id,
+              row.player_id,
+              row.competition_id,
+              row.score,
+              row.row_num,
+            ])
           )
           await tenantDB.run('commit')
         } finally {
