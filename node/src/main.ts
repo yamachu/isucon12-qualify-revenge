@@ -436,12 +436,6 @@ async function flockByTenantID(tenantId: number): Promise<() => Promise<void>> {
   return close
 }
 
-export type TenantCompetitionId<
-  TenantId extends number = any,
-  CompetitionId extends number = any
-> = `${TenantId}-${CompetitionId}`
-const billingReportCache: Map<TenantCompetitionId, BillingReport> = new Map()
-
 // SaaS管理者向けAPI
 // テナントを追加する
 // POST /api/admin/tenants/add
@@ -522,7 +516,8 @@ function validateTenantName(name: string): boolean {
 async function billingReportByCompetition(
   tenantDB: Database,
   tenantId: number,
-  competitionId: string
+  competitionId: string,
+  ifCacheNotFoundReturnEmpty = true
 ): Promise<BillingReport> {
   const comp = await retrieveCompetition(tenantDB, competitionId)
   if (!comp) {
@@ -542,9 +537,23 @@ async function billingReportByCompetition(
     }
   }
 
-  const cached = billingReportCache.get(`${tenantId}-${competitionId}`)
-  if (cached !== undefined) {
-    return cached
+  const [rows] = await adminDB.query<(BillingReport & RowDataPacket)[]>(
+    `select * from billing_report where tenant_id = ? and competition_id = ?`,
+    [tenantId, competitionId]
+  )
+  if (rows.length === 0 && ifCacheNotFoundReturnEmpty) {
+    return {
+      competition_id: comp.id,
+      competition_title: comp.title,
+      player_count: 0,
+      visitor_count: 0,
+      billing_player_yen: 0,
+      billing_visitor_yen: 0,
+      billing_yen: 0,
+    }
+  }
+  if (rows.length === 1) {
+    return rows[0]
   }
 
   // ランキングにアクセスした参加者のIDを取得する
@@ -604,7 +613,19 @@ async function billingReportByCompetition(
       billing_yen: 100 * counts.player + 10 * counts.visitor,
     }
 
-    billingReportCache.set(`${tenantId}-${competitionId}`, result)
+    await adminDB.execute<OkPacket>(
+      'insert into billing_report (tenant_id, competition_id, competition_title, player_count, visitor_count, billing_player_yen, billing_visitor_yen, billing_yen) values (?,?,?,?,?,?,?,?)',
+      [
+        tenantId,
+        competitionId,
+        result.competition_title,
+        result.player_count,
+        result.visitor_count,
+        result.billing_player_yen,
+        result.billing_visitor_yen,
+        result.billing_yen,
+      ]
+    )
 
     return result
   } catch (error) {
@@ -975,9 +996,16 @@ app.post(
       })
 
       // don't await
-      billingReportByCompetition(tenantDB, viewer.tenantId, competitionId).catch((e) => {
-        console.error(`cache failed... => ${e}`)
-      })
+      const backgroundCacheTenantDB = await connectToTenantDB(viewer.tenantId)
+      billingReportByCompetition(backgroundCacheTenantDB, viewer.tenantId, competitionId, false)
+        .then(() => backgroundCacheTenantDB.close())
+        .catch((e) => {
+          console.error(`cache failed... => ${e}`)
+          backgroundCacheTenantDB.close()
+        })
+        .catch((e) => {
+          console.error(`close failed: ${e}`)
+        })
     } catch (error: any) {
       if (error.status) {
         throw error // rethrow
@@ -1572,6 +1600,19 @@ app.post(
   wrap(async (req: Request, res: Response, _next: NextFunction) => {
     try {
       await exec(initializeScript)
+
+      await adminDB.execute('TRUNCATE TABLE billing_report')
+      for (const tenantId of [...Array(100).keys()].map((_, i) => i + 1)) {
+        const tenantDB = await connectToTenantDB(tenantId)
+        const competitionRow = await tenantDB.all<CompetitionRow[]>(
+          'SELECT * FROM competition WHERE finished_at NOT NULL'
+        )
+        for (const competition of competitionRow) {
+          // Add cache
+          await billingReportByCompetition(tenantDB, tenantId, competition.id, false)
+        }
+        tenantDB.close()
+      }
 
       const data: InitializeResult = {
         lang: 'node',
