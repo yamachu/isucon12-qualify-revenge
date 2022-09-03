@@ -1141,6 +1141,8 @@ app.post(
                 row.row_num,
               ])
             )
+
+            // TODO: ここでranking生成
           }
 
           await tenantDB.run('commit')
@@ -1380,6 +1382,56 @@ app.get(
   })
 )
 
+async function aggregateRankingByTenantDB(tenantDB: Database, tenantId: number, competitionId: string) {
+  const ranks: CompetitionRank[] = []
+
+  const pss = await tenantDB.all<{ score: number; player_id: string; display_name: string | null; row_num: number }[]>(
+    'SELECT ps.score as score, ps.player_id as player_id, p.display_name as display_name, ps.row_num as row_num FROM latest_player_score ps left join player p on p.id = ps.player_id WHERE ps.tenant_id = ? AND ps.competition_id = ? ORDER BY ps.row_num DESC',
+    tenantId,
+    competitionId
+  )
+
+  const scoredPlayerSet: { [player_id: string]: number } = {}
+  const tmpRanks: (CompetitionRank & WithRowNum)[] = []
+  for (const ps of pss) {
+    // player_scoreが同一player_id内ではrow_numの降順でソートされているので
+    // 現れたのが2回目以降のplayer_idはより大きいrow_numでスコアが出ているとみなせる
+    if (scoredPlayerSet[ps.player_id]) {
+      continue
+    }
+    scoredPlayerSet[ps.player_id] = 1
+    if (ps.display_name === null) {
+      throw new Error('error retrievePlayer')
+    }
+
+    tmpRanks.push({
+      rank: 0,
+      score: ps.score,
+      player_id: ps.player_id,
+      player_display_name: ps.display_name,
+      row_num: ps.row_num,
+    })
+  }
+
+  tmpRanks.sort((a, b) => {
+    if (a.score === b.score) {
+      return a.row_num < b.row_num ? -1 : 1
+    }
+    return a.score > b.score ? -1 : 1
+  })
+
+  tmpRanks.forEach((rank, index) => {
+    ranks.push({
+      rank: index + 1,
+      score: rank.score,
+      player_id: rank.player_id,
+      player_display_name: rank.player_display_name,
+    })
+  })
+
+  return ranks
+}
+
 // 参加者向けAPI
 // GET /api/player/competition/:competitionId/ranking
 // 大会ごとのランキングを取得する
@@ -1435,53 +1487,8 @@ app.get(
         // player_scoreを読んでいるときに更新が走ると不整合が起こるのでロックを取得する
         // const unlock = await flockByTenantID(tenant.id)
         try {
-          const pss = await tenantDB.all<
-            { score: number; player_id: string; display_name: string | null; row_num: number }[]
-          >(
-            'SELECT ps.score as score, ps.player_id as player_id, p.display_name as display_name, ps.row_num as row_num FROM latest_player_score ps left join player p on p.id = ps.player_id WHERE ps.tenant_id = ? AND ps.competition_id = ? ORDER BY ps.row_num DESC',
-            tenant.id,
-            competition.id
-          )
-
-          const scoredPlayerSet: { [player_id: string]: number } = {}
-          const tmpRanks: (CompetitionRank & WithRowNum)[] = []
-          for (const ps of pss) {
-            // player_scoreが同一player_id内ではrow_numの降順でソートされているので
-            // 現れたのが2回目以降のplayer_idはより大きいrow_numでスコアが出ているとみなせる
-            if (scoredPlayerSet[ps.player_id]) {
-              continue
-            }
-            scoredPlayerSet[ps.player_id] = 1
-            if (ps.display_name === null) {
-              throw new Error('error retrievePlayer')
-            }
-
-            tmpRanks.push({
-              rank: 0,
-              score: ps.score,
-              player_id: ps.player_id,
-              player_display_name: ps.display_name,
-              row_num: ps.row_num,
-            })
-          }
-
-          tmpRanks.sort((a, b) => {
-            if (a.score === b.score) {
-              return a.row_num < b.row_num ? -1 : 1
-            }
-            return a.score > b.score ? -1 : 1
-          })
-
-          tmpRanks.forEach((rank, index) => {
-            if (index < rankAfter) return
-            if (ranks.length >= 100) return
-            ranks.push({
-              rank: index + 1,
-              score: rank.score,
-              player_id: rank.player_id,
-              player_display_name: rank.player_display_name,
-            })
-          })
+          const tmpRanks = await aggregateRankingByTenantDB(tenantDB, tenant.id, competition.id)
+          ranks.push(...tmpRanks.filter((v) => v.rank >= (rankAfter ?? 0) && v.rank < (rankAfter ?? 0) + 100))
         } finally {
           // unlock()
         }
