@@ -28,3 +28,14 @@ CREATE TABLE `billing_report` (
   `billing_yen` BIGINT UNSIGNED NOT NULL,
   UNIQUE `tenant_id_competition_id_idx` (`tenant_id`, `competition_id`)
 ) ENGINE=InnoDB DEFAULT CHARACTER SET=utf8mb4;
+
+DROP TABLE IF EXISTS `ranking`;
+CREATE TABLE `ranking` (
+  `tenant_id` BIGINT UNSIGNED NOT NULL,
+  `competition_id` VARCHAR(255) NOT NULL,
+  `player_id` VARCHAR(255) NOT NULL,
+  `player_display_name` TEXT,
+  `ranking` BIGINT UNSIGNED NOT NULL,
+  `score` BIGINT UNSIGNED NOT NULL,
+  INDEX `tenant_id_competition_id_idx` (`tenant_id`, `competition_id`)
+) ENGINE=InnoDB DEFAULT CHARACTER SET=utf8mb4;

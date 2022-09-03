@@ -1120,6 +1120,10 @@ app.post(
             viewer.tenantId,
             competitionId
           )
+          await adminDB.execute(`DELETE FROM ranking where tenant_id = ? and competition_id = ?`, [
+            viewer.tenantId,
+            competitionId,
+          ])
 
           const willInsert = playerScoreRows.reduce(
             (prev, curr) => prev.set(curr.player_id, curr),
@@ -1142,7 +1146,20 @@ app.post(
               ])
             )
 
-            // TODO: ここでranking生成
+            await aggregateRankingByTenantDB(tenantDB, viewer.tenantId, competitionId).then((v) =>
+              adminDB.execute<OkPacket>(
+                `INSERT ranking (tenant_id,competition_id,player_id,player_display_name,ranking,score) values
+               ${[...Array(v.length)].map((_) => '(?,?,?,?,?,?)').join(',')}`,
+                v.flatMap((vv) => [
+                  viewer.tenantId,
+                  competitionId,
+                  vv.player_id,
+                  vv.player_display_name,
+                  vv.rank,
+                  vv.score,
+                ])
+              )
+            )
           }
 
           await tenantDB.run('commit')
@@ -1487,8 +1504,47 @@ app.get(
         // player_scoreを読んでいるときに更新が走ると不整合が起こるのでロックを取得する
         // const unlock = await flockByTenantID(tenant.id)
         try {
-          const tmpRanks = await aggregateRankingByTenantDB(tenantDB, tenant.id, competition.id)
-          ranks.push(...tmpRanks.filter((v) => v.rank >= (rankAfter ?? 0) && v.rank < (rankAfter ?? 0) + 100))
+          let tmpRanks: CompetitionRank[] = await adminDB
+            .query<(Omit<CompetitionRank, 'rank'> & { ranking: number } & RowDataPacket)[]>(
+              `select * from ranking where tenant_id = ? and competition_id = ?`,
+              [viewer.tenantId, competitionId]
+            )
+            .then(([ranks_]) =>
+              ranks_.map((v) => ({
+                rank: v.ranking,
+                score: v.score,
+                player_id: v.player_id,
+                player_display_name: v.player_display_name,
+              }))
+            )
+
+          if (tmpRanks.length === 0) {
+            tmpRanks = await aggregateRankingByTenantDB(tenantDB, viewer.tenantId, competition.id).then(async (v) => {
+              const con = await adminDB.getConnection()
+              await con.beginTransaction()
+              await con.query(`DELETE FROM ranking where tenant_id = ? and competition_id = ?`, [
+                viewer.tenantId,
+                competition.id,
+              ])
+              await con.query<OkPacket>(
+                `INSERT ranking (tenant_id,competition_id,player_id,player_display_name,ranking,score) values
+               ${[...Array(v.length)].map((_) => '(?,?,?,?,?,?)').join(',')}`,
+                v.flatMap((vv) => [
+                  viewer.tenantId,
+                  competition.id,
+                  vv.player_id,
+                  vv.player_display_name,
+                  vv.rank,
+                  vv.score,
+                ])
+              )
+              await con.commit()
+              await con.release()
+              return v
+            })
+          }
+
+          ranks.push(...tmpRanks.filter((v) => v.rank > (rankAfter ?? 0) && v.rank <= (rankAfter ?? 0) + 100))
         } finally {
           // unlock()
         }
@@ -1651,6 +1707,7 @@ app.post(
       await exec(initializeScript)
 
       await adminDB.execute('TRUNCATE TABLE billing_report')
+      await adminDB.execute(`TRUNCATE TABLE ranking`)
       for (const tenantId of [...Array(100).keys()].map((_, i) => i + 1)) {
         const tenantDB = await connectToTenantDB(tenantId)
         const competitionRow = await tenantDB.all<CompetitionRow[]>(
@@ -1660,6 +1717,19 @@ app.post(
         for (const competition of competitionRow) {
           // Add cache
           await billingReportByCompetition(tenantDB, tenantId, competition.id, false)
+
+          // cache ranking
+          // await adminDB.execute(`DELETE FROM ranking where tenant_id = ? and competition_id = ?`, [
+          //   tenantId,
+          //   competition.id,
+          // ])
+          // await aggregateRankingByTenantDB(tenantDB, tenantId, competition.id).then((v) =>
+          //   adminDB.execute<OkPacket>(
+          //     `INSERT ranking (tenant_id,competition_id,player_id,player_display_name,ranking,score) values
+          //      ${[...Array(v.length)].map((_) => '(?,?,?,?,?,?)').join(',')}`,
+          //     v.flatMap((vv) => [tenantId, competition.id, vv.player_id, vv.player_display_name, vv.rank, vv.score])
+          //   )
+          // )
         }
 
         tenantDB.close()
