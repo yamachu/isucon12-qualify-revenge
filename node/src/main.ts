@@ -563,7 +563,7 @@ async function billingReportByCompetition(
   }
 
   // player_scoreを読んでいるときに更新が走ると不整合が起こるのでロックを取得する
-  const unlock = await flockByTenantID(tenantId)
+  // const unlock = await flockByTenantID(tenantId)
   try {
     // スコアを登録した参加者のIDを取得する
     const scoredPlayerIds = await tenantDB.all<{ player_id: string }[]>(
@@ -610,7 +610,7 @@ async function billingReportByCompetition(
   } catch (error) {
     throw new Error(`error Select count player_score: tenantId=${tenantId}, competitionId=${comp.id}, ${error}`)
   } finally {
-    unlock()
+    // unlock()
   }
 }
 
@@ -1041,7 +1041,7 @@ app.post(
         }
 
         // DELETEしたタイミングで参照が来ると空っぽのランキングになるのでロックする
-        const unlock = await flockByTenantID(viewer.tenantId)
+        // const unlock = await flockByTenantID(viewer.tenantId)
         let rowNum = 0
         try {
           const players = new Set(records.map((v) => v.player_id))
@@ -1083,6 +1083,7 @@ app.post(
             })
           }
 
+          await tenantDB.run('begin TRANSACTION')
           await tenantDB.run(
             'DELETE FROM player_score WHERE tenant_id = ? AND competition_id = ?',
             viewer.tenantId,
@@ -1106,8 +1107,11 @@ app.post(
               row.updated_at,
             ])
           )
+          await tenantDB.run('commit')
+        } catch (error: any) {
+          await tenantDB.run('rollback')
         } finally {
-          unlock()
+          // unlock()
         }
       } catch (error: any) {
         if (error.status) {
@@ -1278,7 +1282,7 @@ app.get(
         const pss: PlayerScoreRow[] = []
 
         // player_scoreを読んでいるときに更新が走ると不整合が起こるのでロックを取得する
-        const unlock = await flockByTenantID(viewer.tenantId)
+        // const unlock = await flockByTenantID(viewer.tenantId)
         try {
           for (const comp of competitions) {
             const ps = await tenantDB.get<PlayerScoreRow>(
@@ -1307,7 +1311,7 @@ app.get(
             })
           }
         } finally {
-          unlock()
+          // unlock()
         }
       } finally {
         tenantDB.close()
@@ -1383,7 +1387,7 @@ app.get(
         }
 
         // player_scoreを読んでいるときに更新が走ると不整合が起こるのでロックを取得する
-        const unlock = await flockByTenantID(tenant.id)
+        // const unlock = await flockByTenantID(tenant.id)
         try {
           const pss = await tenantDB.all<PlayerScoreRow[]>(
             'SELECT * FROM player_score WHERE tenant_id = ? AND competition_id = ? ORDER BY row_num DESC',
@@ -1432,7 +1436,7 @@ app.get(
             })
           })
         } finally {
-          unlock()
+          // unlock()
         }
       } finally {
         tenantDB.close()
