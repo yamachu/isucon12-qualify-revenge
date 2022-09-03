@@ -1387,8 +1387,10 @@ app.get(
         // player_scoreを読んでいるときに更新が走ると不整合が起こるのでロックを取得する
         const unlock = await flockByTenantID(tenant.id)
         try {
-          const pss = await tenantDB.all<PlayerScoreRow[]>(
-            'SELECT * FROM player_score WHERE tenant_id = ? AND competition_id = ? ORDER BY row_num DESC',
+          const pss = await tenantDB.all<
+            { score: number; player_id: string; display_name: string | null; row_num: number }[]
+          >(
+            'SELECT ps.score as score, ps.player_id as player_id, p.display_name as display_name, ps.row_num as row_num FROM player_score ps left join player p on p.id = ps.player_id WHERE ps.tenant_id = ? AND ps.competition_id = ? ORDER BY ps.row_num DESC',
             tenant.id,
             competition.id
           )
@@ -1402,16 +1404,15 @@ app.get(
               continue
             }
             scoredPlayerSet[ps.player_id] = 1
-            const p = await retrievePlayer(tenantDB, ps.player_id)
-            if (!p) {
+            if (ps.display_name === null) {
               throw new Error('error retrievePlayer')
             }
 
             tmpRanks.push({
               rank: 0,
               score: ps.score,
-              player_id: p.id,
-              player_display_name: p.display_name,
+              player_id: ps.player_id,
+              player_display_name: ps.display_name,
               row_num: ps.row_num,
             })
           }
