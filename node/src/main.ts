@@ -1305,7 +1305,7 @@ app.get(
         const unlock = await flockByTenantID(viewer.tenantId)
         try {
           const scores = await tenantDB.all<{ title: string; score: number }[]>(
-            'select ct.title as title, lps.score as score from competition ct join latest_player_score lps on lps.competition_id = ct.id where ct.tenant_id = ? AND player_id = ?　order by ct.created_at ASC',
+            'select ct.title as title, lps.score as score from competition ct join latest_player_score lps on lps.competition_id = ct.id where ct.tenant_id = ? AND player_id = ? order by ct.created_at ASC',
             viewer.tenantId,
             p.id
           )
