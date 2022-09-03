@@ -21,3 +21,5 @@ restart/docker:
 	sudo systemctl daemon-reload
 	sudo systemctl restart isuports.service
 
+sync:
+	git pull; make restart/docker
