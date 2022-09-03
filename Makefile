@@ -10,7 +10,7 @@ log_rotate/mysql:
 	cd /home/isucon; mysqladmin flush-logs
 
 show-slowquery/mysql:
-	mysqldumpslow $(ls -d ~/log/mysql/*|tail -n1)
+	mysqldumpslow `ls -d ~/log/mysql/*|tail -n1`
 
 restart/mysql:
 	sudo systemctl restart mysql
